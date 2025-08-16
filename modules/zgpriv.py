@@ -78,11 +78,11 @@ class ZGPRIV:
             extract_start = pattern_index + len(self.inner_magic)
             
             if file_size == 160:
-                # Handle 160-byte files
+                # Handle 160-byte files - direct extraction
                 extracted_data = data[extract_start:extract_start+32]
                 with open(file_path, "wb") as f:
                     f.write(extracted_data)
-                message_info("Wrap and extracting out", f" {file_path.name}")
+                return True
                 
             elif file_size == 176:
                 # Handle 176-byte files with CMAC and key unwrapping
@@ -97,35 +97,31 @@ class ZGPRIV:
                 
                 # AES key unwrapping
                 unwrapped_data = aes_key_unwrap(bytes.fromhex(KEK), extracted_data)[:32]
-                
-                # Save to new file with _unwrap suffix
                 output_file = file_path.with_name(f"{file_path.stem}_unwrap{file_path.suffix}")
                 with open(output_file, "wb") as f:
                     f.write(unwrapped_data)
-                message_success("Unwrapped 48 bytes to 32 bytes", f" {output_file.name}")
+                return True
                 
             else:
                 message_error("Unsupported file size", f" {file_size} bytes (needs 160 or 176)")
                 return False
                 
-            return True
-            
         except Exception as e:
             message_error("Processing failed", f" {file_path.name}: {str(e)}")
             return False
 
-    def _process_file(self, file_path: Path) -> Tuple[bool, Optional[Path]]:
+    def _process_file(self, encrypted_file_path: Path) -> Tuple[bool, Optional[Path]]:
         try:
             time.sleep(0.5)
-            file_size = os.path.getsize(file_path)
-            human_size = self.utils.get_file_size(file_path, human_readable=True)
-            message_info("Processing file", f" {file_path.name} {Fore.RED}({human_size})")
+            file_size = os.path.getsize(encrypted_file_path)
+            encrypted_size = self.utils.get_file_size(encrypted_file_path, human_readable=True)
+            message_info("Processing file", f" {encrypted_file_path.name} {Fore.RED}({encrypted_size})")
             
-            if not file_path.exists():
-                message_error(f"File not found: {file_path}")
+            if not encrypted_file_path.exists():
+                message_error(f"File not found: {encrypted_file_path}")
                 return (False, None)
 
-            with open(file_path, "rb") as f:
+            with open(encrypted_file_path, "rb") as f:
                 data = f.read()
 
             if not self._check_pattern(data, self.mstar_magic):
@@ -135,8 +131,8 @@ class ZGPRIV:
             time.sleep(0.5)
             message_info("First pattern found", f" {self.mstar_magic}")
 
-            output_file = self.output_dir / f"{file_path.stem}_dec{file_path.suffix}"
-            decrypted_file = self._run_openssl(file_path, output_file)
+            output_file = self.output_dir / f"{encrypted_file_path.stem}_dec{encrypted_file_path.suffix}"
+            decrypted_file = self._run_openssl(encrypted_file_path, output_file)
             if not decrypted_file:
                 return (False, None)
 
@@ -152,18 +148,31 @@ class ZGPRIV:
             
             if file_size in (160, 176):
                 if self._extract_and_overwrite(decrypted_file):
-                    message_success("w00t! Decryption successfully completed", f" {decrypted_file.name} {Fore.RED}({human_size})\n")
+                    decrypted_size = self.utils.get_file_size(decrypted_file, human_readable=True)
+                    
+                    if file_size == 160:
+                        # For 160-byte files, the output is just the decrypted file
+                        message_info("Direct extraction completed", f" {decrypted_file.name} {Fore.RED}({decrypted_size})")
+                        message_success("w00t! Decryption successfully completed", 
+                                     f" {decrypted_file.name}\n")
+                    else:
+                        # For 176-byte files, we have the unwrapped version
+                        unwrap_file = self.output_dir / f"{decrypted_file.stem}_unwrap{decrypted_file.suffix}"
+                        unwrap_size = self.utils.get_file_size(unwrap_file, human_readable=True) if unwrap_file.exists() else "0 B"
+                        message_info("Unwrapped 48 bytes to 32 bytes", f" {decrypted_file.name} {Fore.RED}({decrypted_size})")
+                        message_success("w00t! Decryption successfully completed", 
+                                     f" {unwrap_file.name} {Fore.RED}({unwrap_size})\n")
                 else:
                     message_error("Extraction failed", f" {decrypted_file.name}")
             else:
                 message_info("Skipping extraction", 
-                        f" Unsupported file size: {file_size} bytes (needs 160 or 176)\n")
+                          f" Unsupported file size: {file_size} bytes (needs 160 or 176)\n")
             
             print("=" * 50 + "\n")
             return (True, decrypted_file)
 
         except Exception as e:
-            message_error(f"Error processing: {file_path.name}: {str(e)}")
+            message_error(f"Error processing: {encrypted_file_path.name}: {str(e)}")
             return (False, None)
 
     def analyzer_zgpriv(self) -> List[Path]:

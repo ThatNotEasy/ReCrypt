@@ -62,6 +62,16 @@
 ## Footprints Notes:
 - Currently is only working in `zgpriv`, and still constructing for bgroupcert & generate directly into `.prd`
 
+## Screenshot:
+
+**In screenshot above is showing the different encrypted filesize (SL2K/SL3K)**
+
+- <img width="927" height="440" alt="image" src="https://github.com/user-attachments/assets/2a0f8c15-56ac-49ee-865f-6a1c62d21533" />
+- <img width="927" height="444" alt="image" src="https://github.com/user-attachments/assets/f3d0a3bd-19ed-4294-bc48-764fd4e468d5" />
+
+
+
+
 ## License
 
 This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for more details.
