@@ -1,6 +1,9 @@
 import os
 import time
 import subprocess
+from Crypto.Cipher import AES
+from Crypto.Hash import CMAC
+from cryptography.hazmat.primitives.keywrap import aes_key_unwrap
 from pathlib import Path
 from typing import List, Optional, Tuple
 from modules.logger import setup_logging, message_info, message_error, message_success
@@ -13,7 +16,7 @@ class ZGPRIV:
         self.mstar_magic = b"MSTAR_SECURE_STORE_FILE_MAGIC_ID"
         self.inner_magic = b"INNER_MSTAR_FILE"
         self.default_key = "0007FF4154534D92FC55AA0FFF0110E0"
-        self.path = Path("device/")
+        self.path = Path("encrypted/")
         self.output_dir = Path("decrypted/")
         self.utils = UTILS()
         
@@ -63,32 +66,52 @@ class ZGPRIV:
     def _extract_and_overwrite(self, file_path: Path) -> bool:
         try:
             file_size = os.path.getsize(file_path)
-            extract_size = 32 if file_size == 160 else 48 if file_size == 176 else 0
             
-            if extract_size == 0:
-                message_error("Unsupported file size for extraction", f" {file_size} bytes")
-                return False
-
             with open(file_path, "rb") as f:
                 data = f.read()
             
             pattern_index = data.find(self.inner_magic)
             if pattern_index == -1:
-                message_error("Inner pattern not found in", f" {file_path.name}")
+                message_error("Inner pattern not found", f" {file_path.name}")
                 return False
             
             extract_start = pattern_index + len(self.inner_magic)
-            extracted_data = data[extract_start:extract_start+extract_size]
             
-            with open(file_path, "wb") as f:
-                f.write(extracted_data)
-            
-            message_success("Extracted and overwritten", 
-                        f" {extract_size} bytes after inner pattern in {file_path.name}")
+            if file_size == 160:
+                # Handle 160-byte files
+                extracted_data = data[extract_start:extract_start+32]
+                with open(file_path, "wb") as f:
+                    f.write(extracted_data)
+                message_info("Wrap and extracting out", f" {file_path.name}")
+                
+            elif file_size == 176:
+                # Handle 176-byte files with CMAC and key unwrapping
+                extracted_data = data[extract_start:extract_start+48]
+                
+                # CMAC key derivation
+                cmac_secret = bytes.fromhex("8B222FFD1E76195659CF2703898C427F")
+                cmac = CMAC.new(cmac_secret, ciphermod=AES)
+                cmac_data = bytes.fromhex('019CE93432C7D74016BA684763F801E13600000000000000000000000000000000000080')
+                cmac.update(cmac_data)
+                KEK = cmac.hexdigest()
+                
+                # AES key unwrapping
+                unwrapped_data = aes_key_unwrap(bytes.fromhex(KEK), extracted_data)[:32]
+                
+                # Save to new file with _unwrap suffix
+                output_file = file_path.with_name(f"{file_path.stem}_unwrap{file_path.suffix}")
+                with open(output_file, "wb") as f:
+                    f.write(unwrapped_data)
+                message_success("Unwrapped 48 bytes to 32 bytes", f" {output_file.name}")
+                
+            else:
+                message_error("Unsupported file size", f" {file_size} bytes (needs 160 or 176)")
+                return False
+                
             return True
             
         except Exception as e:
-            message_error("Failed to extract data from", f" {file_path.name}: {str(e)}")
+            message_error("Processing failed", f" {file_path.name}: {str(e)}")
             return False
 
     def _process_file(self, file_path: Path) -> Tuple[bool, Optional[Path]]:
@@ -129,7 +152,7 @@ class ZGPRIV:
             
             if file_size in (160, 176):
                 if self._extract_and_overwrite(decrypted_file):
-                    message_success("Extraction successful", f" {decrypted_file.name}\n")
+                    message_success("w00t! Decryption successfully completed", f" {decrypted_file.name} {Fore.RED}({human_size})\n")
                 else:
                     message_error("Extraction failed", f" {decrypted_file.name}")
             else:
