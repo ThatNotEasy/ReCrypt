@@ -11,10 +11,10 @@ def setup_logging(name: str = "ReCrypt", level: int = logging.DEBUG) -> logging.
     return logger
 
 def message_info(message, optional_message):
-    print(f"{Fore.CYAN}[INFO]: {Fore.WHITE}{message} -{Fore.YELLOW}{optional_message}{Fore.RESET}")
+    print(f"{Fore.CYAN}[INFO]: {Fore.WHITE}{message} - {Fore.YELLOW}{optional_message}{Fore.RESET}")
     
 def message_success(message, optional_message):
-    print(f"{Fore.GREEN}[SUCCESS]: {Fore.WHITE}{message} -{Fore.YELLOW}{optional_message}{Fore.RESET}")
+    print(f"{Fore.GREEN}[SUCCESS]: {Fore.WHITE}{message} - {Fore.YELLOW}{optional_message}{Fore.RESET}")
     
 def message_error(message):
     print(f"{Fore.RED}[ERROR]: {Fore.WHITE}{message}{Fore.RESET}")
