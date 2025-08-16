@@ -1,182 +1,181 @@
-import os
-import time
-import subprocess
+from __future__ import annotations
+
+from pathlib import Path
+from typing import List, Optional, Tuple
+
 from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
 from cryptography.hazmat.primitives.keywrap import aes_key_unwrap
-from pathlib import Path
-from typing import List, Optional, Tuple
-from modules.logger import setup_logging, message_info, message_error, message_success
-from modules.utils import UTILS
 from colorama import Fore
 
+from modules.logger import (
+    setup_logging,
+    message_info,
+    message_error,
+    message_success,
+)
+from modules.utils import UTILS
+
+
 class ZGPRIV:
-    def __init__(self):
+    # Magic markers
+    MSTAR_MAGIC = b"MSTAR_SECURE_STORE_FILE_MAGIC_ID"
+    INNER_MAGIC = b"INNER_MSTAR_FILE"
+
+    # Crypto constants
+    DEFAULT_KEY_HEX = "0007FF4154534D92FC55AA0FFF0110E0"  # 16-byte AES key (hex)
+    DEFAULT_IV_KEY_HEX = "00000000000000000000000000000000"  # 16-byte IV (hex)
+    CMAC_SECRET_HEX = "8B222FFD1E76195659CF2703898C427F"
+    CMAC_DATA_HEX = (
+        "019CE93432C7D74016BA684763F801E13600000000000000000000000000000000000080"
+    )
+
+    def __init__(self) -> None:
         self.log = setup_logging(name="ReCrypt", level="DEBUG")
-        self.mstar_magic = b"MSTAR_SECURE_STORE_FILE_MAGIC_ID"
-        self.inner_magic = b"INNER_MSTAR_FILE"
-        self.default_key = "0007FF4154534D92FC55AA0FFF0110E0"
         self.path = Path("encrypted/")
         self.output_dir = Path("decrypted/")
         self.utils = UTILS()
-        
-        if not self.output_dir.exists():
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-            message_success("Created output directory", f" {self.output_dir}")
 
-    def _run_openssl(self, input_file: Path, output_file: Path) -> bool:
-        try:
-            time.sleep(0.5)
-            message_info("Starting decryption for", f" {input_file.name}\n")
-            time.sleep(0.5)
-            
-            cmd = [
-                "openssl", "enc", "-d",
-                "-aes-128-ecb",
-                f"-K", self.default_key,
-                "-in", str(input_file),
-                "-out", str(output_file),
-                "-nopad"
-            ]
-            
-            result = subprocess.run(
-                cmd,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            
-            if result.returncode == 0:
-                time.sleep(0.5)
-                return output_file
-            message_error("OpenSSL error", f" {result.stderr}")
-            return False
-                
-        except subprocess.CalledProcessError as e:
-            message_error("Decryption failed", f" {e.stderr}")
-            return False
-        except Exception as e:
-            message_error("Unexpected error", f" {str(e)}")
-            return False
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def _check_pattern(self, data: bytes, pattern: bytes) -> bool:
-        return pattern in data
-        
-    def _extract_and_overwrite(self, file_path: Path) -> bool:
-        try:
-            file_size = os.path.getsize(file_path)
-            
-            with open(file_path, "rb") as f:
-                data = f.read()
-            
-            pattern_index = data.find(self.inner_magic)
-            if pattern_index == -1:
-                message_error("Inner pattern not found", f" {file_path.name}")
-                return False
-            
-            extract_start = pattern_index + len(self.inner_magic)
-            
-            if file_size == 160:
-                # Handle 160-byte files - direct extraction
-                extracted_data = data[extract_start:extract_start+32]
-                with open(file_path, "wb") as f:
-                    f.write(extracted_data)
-                return True
-                
-            elif file_size == 176:
-                # Handle 176-byte files with CMAC and key unwrapping
-                extracted_data = data[extract_start:extract_start+48]
-                
-                # CMAC key derivation
-                cmac_secret = bytes.fromhex("8B222FFD1E76195659CF2703898C427F")
-                cmac = CMAC.new(cmac_secret, ciphermod=AES)
-                cmac_data = bytes.fromhex('019CE93432C7D74016BA684763F801E13600000000000000000000000000000000000080')
-                cmac.update(cmac_data)
-                KEK = cmac.hexdigest()
-                
-                # AES key unwrapping
-                unwrapped_data = aes_key_unwrap(bytes.fromhex(KEK), extracted_data)[:32]
-                output_file = file_path.with_name(f"{file_path.stem}_unwrap{file_path.suffix}")
-                with open(output_file, "wb") as f:
-                    f.write(unwrapped_data)
-                return True
-                
-            else:
-                message_error("Unsupported file size", f" {file_size} bytes (needs 160 or 176)")
-                return False
-                
-        except Exception as e:
-            message_error("Processing failed", f" {file_path.name}: {str(e)}")
-            return False
+        # Precompute crypto bytes (default key)
+        self._key_bytes = bytes.fromhex(self.DEFAULT_KEY_HEX)
+        self._cmac_secret = bytes.fromhex(self.CMAC_SECRET_HEX)
+        self._cmac_data = bytes.fromhex(self.CMAC_DATA_HEX)
 
+        # Optional overrides (set by main.py if provided)
+        self._aes_key: Optional[bytes] = None
+        self._iv_key: Optional[bytes] = None
+        self.algorithm: str = "aes-ecb"  # can be overridden to "aes-cbc" or "aes-ctr"
+
+    # ---------------------------- internal helpers ----------------------------
+    @staticmethod
+    def _contains(data: bytes, pattern: bytes) -> bool:
+        return data.find(pattern) != -1
+
+    def _effective_key(self) -> bytes:
+        return self._aes_key if self._aes_key else self._key_bytes
+
+    def _effective_iv(self) -> bytes:
+        if self._iv_key:
+            return self._iv_key
+        # Provide a sane default IV if mode needs one
+        return bytes.fromhex(self.DEFAULT_IV_KEY_HEX)
+
+    def _decrypt(self, raw: bytes) -> bytes:
+        """
+        Unified decryptor honoring self.algorithm:
+          - aes-ecb: requires len%16==0
+          - aes-cbc: requires len%16==0 + 16-byte IV
+          - aes-ctr: any size + 16-byte IV (used as nonce|counter seed)
+        """
+        key = self._effective_key()
+
+        mode = (self.algorithm or "aes-ecb").lower()
+        if mode == "aes-ecb":
+            if len(raw) % 16 != 0:
+                raise ValueError(f"ECB input must be multiple of 16 (got {len(raw)})")
+            cipher = AES.new(key, AES.MODE_ECB)
+            return cipher.decrypt(raw)
+
+        iv = self._effective_iv()
+        if len(iv) != 16:
+            raise ValueError("IV must be 16 bytes for CBC/CTR")
+
+        if mode == "aes-cbc":
+            if len(raw) % 16 != 0:
+                raise ValueError(f"CBC input must be multiple of 16 (got {len(raw)})")
+            cipher = AES.new(key, AES.MODE_CBC, iv=iv)
+            return cipher.decrypt(raw)
+
+        if mode == "aes-ctr":
+            # In PyCryptodome, CTR needs a counter; use nonce=iv[:8], initial_value from iv[8:]
+            from Crypto.Util import Counter
+            nonce = iv[:8]
+            initial = int.from_bytes(iv[8:], "big")
+            ctr = Counter.new(64, prefix=nonce, initial_value=initial)
+            cipher = AES.new(key, AES.MODE_CTR, counter=ctr)
+            return cipher.decrypt(raw)
+
+        raise ValueError(f"Unsupported algorithm: {self.algorithm}")
+
+    def _unwrap_176_key(self, wrapped: bytes) -> bytes:
+        """Return first 32 bytes from RFC3394 unwrap result (as in original)."""
+        cmac = CMAC.new(self._cmac_secret, ciphermod=AES)
+        cmac.update(self._cmac_data)
+        kek = bytes.fromhex(cmac.hexdigest())
+        return aes_key_unwrap(kek, wrapped)[:32]
+
+    # ------------------------------ core routine ------------------------------
     def _process_file(self, encrypted_file_path: Path) -> Tuple[bool, Optional[Path]]:
         try:
-            time.sleep(0.5)
-            file_size = os.path.getsize(encrypted_file_path)
-            encrypted_size = self.utils.get_file_size(encrypted_file_path, human_readable=True)
-            message_info("Processing file", f" {encrypted_file_path.name} {Fore.RED}({encrypted_size})")
-            
             if not encrypted_file_path.exists():
                 message_error(f"File not found: {encrypted_file_path}")
-                return (False, None)
+                return False, None
 
-            with open(encrypted_file_path, "rb") as f:
-                data = f.read()
+            enc_size_hr = self.utils.get_file_size(encrypted_file_path, human_readable=True)
+            message_info("Processing file", f" {encrypted_file_path.name} {Fore.RED}({enc_size_hr})")
 
-            if not self._check_pattern(data, self.mstar_magic):
-                message_error("First pattern not found", f" {self.mstar_magic}")
-                return (False, None)
+            enc_bytes = encrypted_file_path.read_bytes()
 
-            time.sleep(0.5)
-            message_info("First pattern found", f" {self.mstar_magic}")
+            # Pre-check outer magic in encrypted payload
+            if not self._contains(enc_bytes, self.MSTAR_MAGIC):
+                message_error(f"First pattern not found {self.MSTAR_MAGIC!r}")
+                return False, None
+            message_info("First pattern found", f" {self.MSTAR_MAGIC}")
 
-            output_file = self.output_dir / f"{encrypted_file_path.stem}_dec{encrypted_file_path.suffix}"
-            decrypted_file = self._run_openssl(encrypted_file_path, output_file)
-            if not decrypted_file:
-                return (False, None)
+            # Decrypt whole file (by selected algorithm; default aes-ecb)
+            dec_bytes = self._decrypt(enc_bytes)
 
-            with open(decrypted_file, "rb") as f:
-                decrypted_data = f.read()
+            # Save the raw decrypted file
+            dec_path = self.output_dir / f"{encrypted_file_path.stem}_dec{encrypted_file_path.suffix}"
+            dec_path.write_bytes(dec_bytes)
 
-            if not self._check_pattern(decrypted_data, self.inner_magic):
-                message_error("Second pattern not found", f" {self.inner_magic}")
-                return (True, decrypted_file)
+            # Check inner magic in decrypted payload
+            if not self._contains(dec_bytes, self.INNER_MAGIC):
+                message_error(f"Second pattern not found {self.INNER_MAGIC!r}")
+                return True, dec_path
 
-            time.sleep(0.5)
-            message_info("Second pattern found", f" {self.inner_magic}")
-            
-            if file_size in (160, 176):
-                if self._extract_and_overwrite(decrypted_file):
-                    decrypted_size = self.utils.get_file_size(decrypted_file, human_readable=True)
-                    
-                    if file_size == 160:
-                        # For 160-byte files, the output is just the decrypted file
-                        message_info("Direct extraction completed", f" {decrypted_file.name} {Fore.RED}({decrypted_size})")
-                        message_success("w00t! Decryption successfully completed", 
-                                     f" {decrypted_file.name}\n")
-                    else:
-                        # For 176-byte files, we have the unwrapped version
-                        unwrap_file = self.output_dir / f"{decrypted_file.stem}_unwrap{decrypted_file.suffix}"
-                        unwrap_size = self.utils.get_file_size(unwrap_file, human_readable=True) if unwrap_file.exists() else "0 B"
-                        message_info("Unwrapped 48 bytes to 32 bytes", f" {decrypted_file.name} {Fore.RED}({decrypted_size})")
-                        message_success("w00t! Decryption successfully completed", 
-                                     f" {unwrap_file.name} {Fore.RED}({unwrap_size})\n")
-                else:
-                    message_error("Extraction failed", f" {decrypted_file.name}")
-            else:
-                message_info("Skipping extraction", 
-                          f" Unsupported file size: {file_size} bytes (needs 160 or 176)\n")
-            
-            print("=" * 50 + "\n")
-            return (True, decrypted_file)
+            message_info("Second pattern found", f" {self.INNER_MAGIC}")
+
+            # Post-processing for known sizes
+            file_size = encrypted_file_path.stat().st_size
+            inner_idx = dec_bytes.find(self.INNER_MAGIC) + len(self.INNER_MAGIC)
+
+            if file_size == 160:
+                # direct extraction of 32 bytes after INNER_MAGIC
+                extracted = dec_bytes[inner_idx : inner_idx + 32]
+                out_path = self.output_dir / f"{encrypted_file_path.stem}_extracted{encrypted_file_path.suffix}"
+                out_path.write_bytes(extracted)
+                out_hr = self.utils.get_file_size(out_path, human_readable=True)
+                message_info("Direct extraction completed", f" {out_path.name} {Fore.RED}({out_hr})")
+                message_success("w00t! Decryption successfully completed", f" {dec_path.name}\n")
+                return True, dec_path
+
+            if file_size == 176:
+                # unwrap 48 -> 32 bytes using derived KEK
+                wrapped = dec_bytes[inner_idx : inner_idx + 48]
+                unwrapped = self._unwrap_176_key(wrapped)
+                unwrap_path = self.output_dir / f"{encrypted_file_path.stem}_unwrap{encrypted_file_path.suffix}"
+                unwrap_path.write_bytes(unwrapped)
+
+                dec_hr = self.utils.get_file_size(dec_path, human_readable=True)
+                unwrap_hr = self.utils.get_file_size(unwrap_path, human_readable=True)
+                message_info("Unwrapped 48 bytes to 32 bytes", f" {dec_path.name} {Fore.RED}({dec_hr})\n")
+                message_success("w00t! Decryption successfully completed", f" {unwrap_path.name} {Fore.RED}({unwrap_hr})")
+                return True, dec_path
+
+            # Unknown size -> keep decrypted output only
+            message_info("Skipping extraction", f" Unsupported file size: {file_size} bytes (needs 160 or 176)\n")
+            return True, dec_path
 
         except Exception as e:
-            message_error(f"Error processing: {encrypted_file_path.name}: {str(e)}")
-            return (False, None)
+            message_error(f"Error processing {encrypted_file_path.name}: {e}")
+            return False, None
 
+    # --------------------------------- public ---------------------------------
     def analyzer_zgpriv(self) -> List[Path]:
-        decrypted_files = []
+        decrypted_files: List[Path] = []
         try:
             files = self.utils.get_all_files(self.path)
             if not files:
@@ -185,14 +184,12 @@ class ZGPRIV:
 
             for file in files:
                 file_path = Path(file)
-                success, output_path = self._process_file(file_path)
-                if success and output_path:
-                    decrypted_files.append(output_path)
+                ok, out_path = self._process_file(file_path)
+                if ok and out_path:
+                    decrypted_files.append(out_path)
 
-            time.sleep(0.5)
             message_info("Processing complete. Decrypted", f" {len(decrypted_files)} files")
             return decrypted_files
-
         except Exception as e:
-            message_error(f"Analyzer failed: {str(e)}")
+            message_error(f"Analyzer failed: {e}")
             return decrypted_files
