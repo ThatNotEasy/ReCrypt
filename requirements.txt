@@ -1,0 +1,9 @@
+cffi==1.17.1
+colorama==0.4.6
+coloredlogs==15.0.1
+cryptography==45.0.6
+humanfriendly==10.0
+pycparser==2.22
+pycryptodome==3.23.0
+pycryptodomex==3.23.0
+pyreadline3==3.5.4
