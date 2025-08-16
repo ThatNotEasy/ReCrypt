@@ -8,8 +8,7 @@ from Crypto.Cipher import AES
 from Crypto.Hash import CMAC
 from Crypto.Util.Padding import unpad
 from cryptography.hazmat.primitives.keywrap import aes_key_unwrap
-
-from modules.logger import message_info, message_error, message_success
+from modules.logger import message_info
 
 
 class ALGORITHM:
@@ -29,7 +28,7 @@ class ALGORITHM:
     ) -> bytes:
 
         if key is None:
-            message_error("AES key is required but not provided. Use --aes-key or --default.")
+            message_info("AES key is required but not provided. Use --aes-key or --default.")
             raise ValueError("AES key is required.")
 
         if iv is None:
@@ -39,7 +38,7 @@ class ALGORITHM:
         if isinstance(data, (str, Path)):
             file_path = Path(data)
             if not file_path.exists():
-                message_error(f"File not found: {file_path}")
+                message_info(f"File not found: {file_path}")
                 raise FileNotFoundError(file_path)
             message_info("Reading file", str(file_path))
             data = file_path.read_bytes()
@@ -69,23 +68,21 @@ class ALGORITHM:
             else:
                 raise ValueError(f"Unsupported algorithm: {mode}")
 
-            # Unpad kalau PKCS7
             if auto_unpad:
                 try:
                     plaintext = unpad(plaintext, AES.block_size)
                 except ValueError:
-                    message_error("Invalid or missing PKCS7 padding. Returning raw data.")
+                    pass
 
-            # Simpan kalau ada output_file
             if output_file:
                 with open(output_file, "wb") as f:
                     f.write(plaintext)
-                message_success("Decryption complete", f"Output saved to {output_file}")
+                message_info("Decryption complete", f"Output saved to {output_file}")
 
             return plaintext
 
         except Exception as e:
-            message_error(f"Decryption failed: {e}")
+            message_info(f"Decryption failed: {e}")
             raise
 
     # ------------------------- unwrap helper -------------------------

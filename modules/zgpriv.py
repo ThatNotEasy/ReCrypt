@@ -5,10 +5,10 @@ from typing import List, Optional, Tuple
 
 from colorama import Fore
 
-from modules.logger import setup_logging, message_info, message_error, message_success
+from modules.logger import *
 from modules.utils import UTILS
 from modules.algorithm import ALGORITHM
-
+import time
 
 class ZGPRIV:
     # Magic markers
@@ -56,18 +56,20 @@ class ZGPRIV:
     def _process_file(self, encrypted_file_path: Path) -> Tuple[bool, Optional[Path]]:
         try:
             if not encrypted_file_path.exists():
-                message_error(f"File not found: {encrypted_file_path}")
+                message_info(f"FILE NOT FOUND", f"{encrypted_file_path}")
                 return False, None
 
             enc_size_hr = self.utils.get_file_size(encrypted_file_path, human_readable=True)
-            message_info("Processing file", f" {encrypted_file_path.name} {Fore.RED}({enc_size_hr})")
+            message_info("FILE SIZE   ", f"{encrypted_file_path.name} {Fore.RED}({enc_size_hr})")
+            time.sleep(1)
 
             enc_bytes = encrypted_file_path.read_bytes()
 
             if not self._contains(enc_bytes, self.MSTAR_MAGIC):
-                message_error(f"First pattern not found {self.MSTAR_MAGIC!r}")
+                message_info(f"FIRST PATTERN NOT FOUND", f"{self.MSTAR_MAGIC!r}")
                 return False, None
-            message_info("First pattern found", f" {self.MSTAR_MAGIC}")
+            message_info("FIRST PATTERN FOUND ", f"{self.MSTAR_MAGIC}")
+            time.sleep(1)
 
             # decrypt
             dec_bytes = self.alg.decrypt(
@@ -76,43 +78,45 @@ class ZGPRIV:
                 mode=self.algorithm,
                 iv=self._effective_iv(),
             )
+            time.sleep(1)
 
             dec_path = self.output_dir / f"{encrypted_file_path.stem}_dec{encrypted_file_path.suffix}"
             dec_path.write_bytes(dec_bytes)
 
             if not self._contains(dec_bytes, self.INNER_MAGIC):
-                message_error(f"Second pattern not found {self.INNER_MAGIC!r}")
+                message_info(f"SECOND PATTERN NOT FOUND {self.INNER_MAGIC!r}")
                 return True, dec_path
-            message_info("Second pattern found", f" {self.INNER_MAGIC}")
+            message_info("SECOND PATTERN FOUND", f" {self.INNER_MAGIC}")
+            time.sleep(1)
 
             # Post-processing overwrite mode
             file_size = encrypted_file_path.stat().st_size
             inner_idx = dec_bytes.find(self.INNER_MAGIC) + len(self.INNER_MAGIC)
 
-            if file_size == 160 or file_size == 192:
-                # overwrite dec file with 32 extracted bytes
+            if file_size in (160, 192):
                 extracted = dec_bytes[inner_idx : inner_idx + 32]
                 dec_path.write_bytes(extracted)
                 out_hr = self.utils.get_file_size(dec_path, human_readable=True)
-                message_info("Stripped out 32 bytes", f" {dec_path.name} {Fore.RED}({out_hr})\n")
-                message_success("w00t! Decryption successfully completed", f" {dec_path.name}\n")
+                message_info("STRIPPED OUT 32 BYTES", f" {dec_path.name} {Fore.RED}({out_hr})\n")
+                time.sleep(1)
+                message_info("w00t!", f" {dec_path.name}")
                 return True, dec_path
 
             if file_size == 176:
                 wrapped = dec_bytes[inner_idx : inner_idx + 48]
                 unwrapped = self.alg.unwrap_176_key(wrapped, self._cmac_secret, self._cmac_data)
-                # overwrite dec file with unwrapped bytes
                 dec_path.write_bytes(unwrapped)
                 unwrap_hr = self.utils.get_file_size(dec_path, human_readable=True)
-                message_info("Unwrapped 48 bytes to 32 bytes", f" {dec_path.name} {Fore.RED}({unwrap_hr})\n")
-                message_success("w00t! Decryption successfully completed", f" {dec_path.name}\n")
+                message_info("UNWRAPPED 48 TO 32 BYTES", f" {dec_path.name} {Fore.RED}({unwrap_hr})\n")
+                time.sleep(1)
+                message_info("w00t!", f" {dec_path.name}")
                 return True, dec_path
 
             message_info("Skipping extraction", f" Unsupported file size: {file_size} bytes (expected 160/176/192)\n")
             return True, dec_path
 
         except Exception as e:
-            message_error(f"Error processing {encrypted_file_path.name}: {e}")
+            message_info(f"Error processing {encrypted_file_path.name}: {e}")
             return False, None
 
     # --------------------------------- public ---------------------------------
@@ -121,7 +125,7 @@ class ZGPRIV:
         try:
             files = self.utils.get_all_files(self.path)
             if not files:
-                message_error(f"No files found in: {self.path}")
+                message_info(f"No files found in: {self.path}")
                 return decrypted_files
 
             for file in files:
@@ -133,5 +137,5 @@ class ZGPRIV:
             message_info("Processing complete. Decrypted", f" {len(decrypted_files)} files")
             return decrypted_files
         except Exception as e:
-            message_error(f"Analyzer failed: {e}")
+            message_info(f"Analyzer failed: {e}")
             return decrypted_files
