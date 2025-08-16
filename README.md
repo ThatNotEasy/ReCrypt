@@ -7,8 +7,6 @@
 ## Requirements
 
 - **Python 3.8+**
-- **External**:
-  - OpenSSL (must be available in the system PATH)
 
 ---
 
@@ -38,7 +36,7 @@
 2. Run the script:
 
    ```bash
-   python main.py
+   python main.py -H
    ```
 
 3. Decrypted files will be saved in the `decrypted/` folder.
@@ -68,8 +66,6 @@
 
 - <img width="927" height="440" alt="image" src="https://github.com/user-attachments/assets/2a0f8c15-56ac-49ee-865f-6a1c62d21533" />
 - <img width="927" height="444" alt="image" src="https://github.com/user-attachments/assets/f3d0a3bd-19ed-4294-bc48-764fd4e468d5" />
-
-
 
 
 ## License
