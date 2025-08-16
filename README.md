@@ -1,6 +1,6 @@
-# ReadyDecrypt - PlayReady Certificate Decryption Tool
+# ReCrypt - PlayReady Certificate Decryption Tool
 
-**ReadyDecrypt** is a Python-based tool designed primarily for decrypting PlayReady certificates stored in MStar secure storage systems. The tool uses AES-128-ECB decryption and key unwrapping techniques to process encrypted files. It is built to handle PlayReady certificates, but may also work with other AES-encrypted files with a similar structure.
+**ReCrypt** is a Python-based tool designed primarily for decrypting PlayReady certificates stored in MStar secure storage systems. The tool uses AES-128-ECB decryption and key unwrapping techniques to process encrypted files. It is built to handle PlayReady certificates, but may also work with other AES-encrypted files with a similar structure.
 
 ---
 
@@ -17,7 +17,7 @@
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/ThatNotEasy/ReadyDecrypt.git
+   git clone https://github.com/ThatNotEasy/ReCrypt.git
    ```
 
 2. Install required dependencies:
@@ -43,7 +43,7 @@
 
 3. Decrypted files will be saved in the `decrypted/` folder.
 
-### Using ReadyDecrypt Programmatically
+### Using ReCrypt Programmatically
 
 ---
 

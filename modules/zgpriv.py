@@ -12,7 +12,7 @@ from colorama import Fore
 
 class ZGPRIV:
     def __init__(self):
-        self.log = setup_logging(name="ReadyDecrypt", level="DEBUG")
+        self.log = setup_logging(name="ReCrypt", level="DEBUG")
         self.mstar_magic = b"MSTAR_SECURE_STORE_FILE_MAGIC_ID"
         self.inner_magic = b"INNER_MSTAR_FILE"
         self.default_key = "0007FF4154534D92FC55AA0FFF0110E0"

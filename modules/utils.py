@@ -7,7 +7,7 @@ class FileSizeError(Exception):
 
 class UTILS:
     def __init__(self):    
-        self.log = setup_logging(name="ReadyDecrypt", level="DEBUG")
+        self.log = setup_logging(name="ReCrypt", level="DEBUG")
 
     def get_file_size(self, path: Union[str, os.PathLike], human_readable: bool = False) -> Union[int, str]:
         try:

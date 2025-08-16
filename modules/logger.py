@@ -4,7 +4,7 @@ from colorama import Fore, init
 
 init(autoreset=True)
 
-def setup_logging(name: str = "ReadyDecrypt", level: int = logging.DEBUG) -> logging.Logger:
+def setup_logging(name: str = "ReCrypt", level: int = logging.DEBUG) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(level)
     coloredlogs.install(level=level, logger=logger)
