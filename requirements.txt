@@ -22,8 +22,11 @@ pycryptodome==3.23.0
 pycryptodomex==3.23.0
 pyplayready==0.6.0
 pyreadline3==3.5.4
+python-magic==0.4.27
+python-magic-bin==0.4.14
 PyYAML==6.0.2
 requests==2.32.4
+tqdm==4.67.1
 typing_extensions==4.14.1
 urllib3==2.5.0
 xmltodict==0.14.2
