@@ -34,7 +34,6 @@ class ALGORITHM:
         if iv is None:
             iv = b"\x00" * 16
 
-        # Kalau input berupa file path, baca dulu
         if isinstance(data, (str, Path)):
             file_path = Path(data)
             if not file_path.exists():
