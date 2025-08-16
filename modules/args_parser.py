@@ -107,10 +107,11 @@ def parse_args(argv: Optional[List[str]] = None) -> ParsedArgs:
         ns.algorithm = "aes-ecb"
     else:
         # post-parse validation
-        if ns.algorithm in ("aes-cbc", "aes-ctr") and ns.iv_key_hex is None:
-            p.error("--iv-key is required when --algorithm is aes-cbc or aes-ctr")
         if ns.iv_key_hex is not None and len(ns.iv_key_hex) != 32:
             p.error("--iv-key must be 16 bytes (32 hex chars)")
+
+        # if ns.algorithm in ("aes-cbc", "aes-ctr") and ns.iv_key_hex is None:
+        #     p.error("--iv-key is required when --algorithm is aes-cbc or aes-ctr")
 
     # dedupe files
     seen, files = set(), []
